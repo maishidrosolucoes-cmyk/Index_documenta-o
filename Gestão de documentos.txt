@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentações</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Adicionando a biblioteca do Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+
+  <script>
+    // Inicialize o Supabase
+    const supabaseUrl = 'https://clbpujmdjbywbuevhyhg.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNsYnB1am1kamJ5d2J1ZXZoeWhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyOTA3NTUsImV4cCI6MjA4OTg2Njc1NX0.3vwMm8mLEcg9nPzH2uyrB65mzxN_NMvvaLSn2OxKAxo';
+    
+    let supabaseClient = null;
+
+    try {
+      if (supabaseUrl.startsWith('http://') || supabaseUrl.startsWith('https://')) {
+        supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+      }
+    } catch (error) {
+      console.error("Erro crítico ao carregar Supabase:", error);
+    }
+
+    // Declaração global explícita para contornar o isolamento do iframe
+    window.dashboard = function() {
+      return {
+        documentos: [],
+        categoriasApi: [],
+        resumoApi: {},
+        loading: false,
+        search: '',
+        statusFilter: '',
+        categoriaFilter: '',
+        selected: null,
+
+        async init() {
+          // Bloqueia o scroll da página principal quando o modal abre
+          this.$watch('selected', (value) => {
+            if (value) {
+              document.body.classList.add('overflow-hidden');
+            } else {
+              document.body.classList.remove('overflow-hidden');
+            }
+          });
+          
+          await this.carregar();
+        },
+
+        async carregar() {
+          this.loading = true;
+          try {
+            if (!supabaseClient) {
+               console.warn("Ignorando busca no banco pois o Supabase não está configurado.");
+               this.documentos = [];
+               return;
+            }
+
+            const { data, error } = await supabaseClient
+              .from('vw_documentos_status')
+              .select('*');
+
+            if (error) throw error;
+
+            this.documentos = data || [];
+            
+          } catch (e) {
+            console.error('Erro ao carregar documentos do Supabase:', e.message);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        limparFiltros() {
+          this.search = '';
+          this.statusFilter = '';
+          this.categoriaFilter = '';
+        },
+
+        // Função adicionada para filtragem e rolagem suave via cartões
+        scrollToLista(status) {
+          this.statusFilter = status;
+          document.getElementById('documentos-section').scrollIntoView({ behavior: 'smooth' });
+        },
+
+        get filteredDocumentos() {
+          // Pesos para ordenação: Vencidos primeiro, depois a vencer, depois em dia.
+          const pesos = { 'vencido': 1, 'vence_em_breve': 2, 'em_dia': 3 };
+
+          return this.documentos.filter(doc => {
+            const texto = `${doc.documento || ''} ${doc.orgao_expeditor || doc.orgaoExpeditor || ''} ${doc.categoria || ''} ${doc.tipo_doc || doc.tipo_documento || doc.tipoDocumento || ''}`.toLowerCase();
+            const bateBusca = texto.includes(this.search.toLowerCase());
+            const status = doc.status_prazo || doc.statusPrazo;
+            const bateStatus = !this.statusFilter || status === this.statusFilter;
+            const bateCategoria = !this.categoriaFilter || doc.categoria === this.categoriaFilter;
+            return bateBusca && bateStatus && bateCategoria;
+          }).sort((a, b) => {
+            // Ordena pela prioridade definida nos pesos
+            const statusA = a.status_prazo || a.statusPrazo;
+            const statusB = b.status_prazo || b.statusPrazo;
+            const pesoA = pesos[statusA] || 4;
+            const pesoB = pesos[statusB] || 4;
+            
+            if (pesoA !== pesoB) return pesoA - pesoB;
+            
+            // Critério de desempate: dias restantes (do menor para o maior)
+            const diasA = a.dias_restantes ?? a.diasRestantes ?? 9999;
+            const diasB = b.dias_restantes ?? b.diasRestantes ?? 9999;
+            return diasA - diasB;
+          });
+        },
+
+        get stats() {
+          // Para os stats, filtramos os totais ignorando o statusFilter atual para que os cartões não zerassem
+          const listaBase = this.documentos.filter(doc => {
+            const texto = `${doc.documento || ''} ${doc.orgao_expeditor || doc.orgaoExpeditor || ''} ${doc.categoria || ''} ${doc.tipo_doc || doc.tipo_documento || doc.tipoDocumento || ''}`.toLowerCase();
+            const bateBusca = texto.includes(this.search.toLowerCase());
+            const bateCategoria = !this.categoriaFilter || doc.categoria === this.categoriaFilter;
+            return bateBusca && bateCategoria;
+          });
+
+          return {
+            total: listaBase.length,
+            emDia: listaBase.filter(d => (d.status_prazo || d.statusPrazo) === 'em_dia').length,
+            venceEmBreve: listaBase.filter(d => (d.status_prazo || d.statusPrazo) === 'vence_em_breve').length,
+            vencido: listaBase.filter(d => (d.status_prazo || d.statusPrazo) === 'vencido').length
+          };
+        },
+
+        get categoriasUnicas() {
+          return [...new Set(this.documentos.map(d => d.categoria).filter(Boolean))].sort();
+        },
+
+        get resumoCategorias() {
+          const mapa = {};
+
+          this.filteredDocumentos.forEach(doc => {
+            const categoria = doc.categoria || 'Sem categoria';
+            const status = doc.status_prazo || doc.statusPrazo;
+
+            if (!mapa[categoria]) {
+              mapa[categoria] = { categoria, total: 0, emDia: 0, venceEmBreve: 0, vencido: 0 };
+            }
+
+            mapa[categoria].total++;
+            if (status === 'em_dia') mapa[categoria].emDia++;
+            if (status === 'vence_em_breve') mapa[categoria].venceEmBreve++;
+            if (status === 'vencido') mapa[categoria].vencido++;
+          });
+
+          return Object.values(mapa).sort((a, b) => b.total - a.total);
+        },
+
+        labelStatus(status) {
+          if (status === 'vencido') return 'Vencido';
+          if (status === 'vence_em_breve') return 'Prestes a vencer';
+          return 'Em dia';
+        },
+
+        badgeClass(status) {
+          if (status === 'vencido') return 'bg-rose-100 text-rose-700';
+          if (status === 'vence_em_breve') return 'bg-amber-100 text-amber-700';
+          return 'bg-emerald-100 text-emerald-700';
+        },
+
+        urgenciaDiasClass(dias) {
+          if (dias == null) return '';
+          if (dias < 0) return 'text-rose-700';
+          if (dias <= 7) return 'text-amber-700';
+          return 'text-slate-800';
+        },
+
+        formatDate(date) {
+          if (!date) return '-';
+          return new Date(date + 'T00:00:00').toLocaleDateString('pt-BR');
+        }
+      };
+    };
+  </script>
+
+  <!-- O script do Alpine -->
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+</head>
+<body class="bg-slate-50 text-slate-800">
+<!-- Chamada explícita da função -->
+<div x-data="dashboard()" class="min-h-screen">
+
+  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-3">
+        <img src="https://res.cloudinary.com/dbnyxxhe3/image/upload/v1772102800/02_Prancheta_1_ksm9oj.png" alt="Logo" class="h-11 w-auto object-contain">
+        <div>
+          <h1 class="text-xl font-semibold tracking-tight">Documentações</h1>
+          <p class="text-sm text-slate-500">conectado a base de dados</p>
+        </div>
+      </div>
+
+      <div class="hidden md:flex items-center gap-2">
+        <button @click="carregar()"
+                class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50">
+          Atualizar
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <section class="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Resumo geral</h2>
+          <span class="text-sm text-slate-400" x-text="loading ? 'Carregando...' : `${stats.total} registros`"></span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <!-- Modificados para permitir clique, filtragem e rolagem -->
+          <div @click="scrollToLista('')" title="Ver todos e ir para a lista" class="rounded-xl bg-slate-50 p-4 cursor-pointer hover:bg-slate-100 transition-colors">
+            <p class="text-xs text-slate-500">Total</p>
+            <p class="mt-1 text-2xl font-semibold" x-text="stats.total"></p>
+          </div>
+          <div @click="scrollToLista('em_dia')" title="Filtrar em dia e ir para a lista" class="rounded-xl bg-emerald-50 p-4 cursor-pointer hover:bg-emerald-100 transition-colors">
+            <p class="text-xs text-emerald-700">Em dia</p>
+            <p class="mt-1 text-2xl font-semibold text-emerald-700" x-text="stats.emDia"></p>
+          </div>
+          <div @click="scrollToLista('vence_em_breve')" title="Filtrar prestes a vencer e ir para a lista" class="rounded-xl bg-amber-50 p-4 cursor-pointer hover:bg-amber-100 transition-colors">
+            <p class="text-xs text-amber-700">Prestes a vencer</p>
+            <p class="mt-1 text-2xl font-semibold text-amber-700" x-text="stats.venceEmBreve"></p>
+          </div>
+          <div @click="scrollToLista('vencido')" title="Filtrar vencidos e ir para a lista" class="rounded-xl bg-rose-50 p-4 cursor-pointer hover:bg-rose-100 transition-colors">
+            <p class="text-xs text-rose-700">Vencidos</p>
+            <p class="mt-1 text-2xl font-semibold text-rose-700" x-text="stats.vencido"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Categorias</h2>
+        </div>
+
+        <div class="space-y-3 max-h-72 overflow-auto pr-1">
+          <template x-for="item in resumoCategorias" :key="item.categoria">
+            <div class="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+              <div>
+                <p class="font-medium" x-text="item.categoria"></p>
+                <p class="text-sm text-slate-500"><span x-text="item.total"></span> documentos</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                <span class="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700" x-text="`OK ${item.emDia}`"></span>
+                <span class="rounded-full bg-amber-100 px-2 py-1 text-amber-700" x-text="`Breve ${item.venceEmBreve}`"></span>
+                <span class="rounded-full bg-rose-100 px-2 py-1 text-rose-700" x-text="`Atraso ${item.vencido}`"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <input x-model="search"
+               type="text"
+               placeholder="Buscar documento, órgão, categoria..."
+               class="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-400"/>
+
+        <select x-model="statusFilter" class="rounded-xl border border-slate-200 px-4 py-3 text-sm">
+          <option value="">Todos os status</option>
+          <option value="vencido">Vencidos</option>
+          <option value="vence_em_breve">Prestes a vencer</option>
+          <option value="em_dia">Em dia</option>
+        </select>
+
+        <select x-model="categoriaFilter" class="rounded-xl border border-slate-200 px-4 py-3 text-sm">
+          <option value="">Todas as categorias</option>
+          <template x-for="cat in categoriasUnicas" :key="cat">
+            <option :value="cat" x-text="cat"></option>
+          </template>
+        </select>
+
+        <button @click="limparFiltros()"
+                class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium hover:bg-slate-50">
+          Limpar filtros
+        </button>
+      </div>
+    </section>
+
+    <!-- Adicionado ID e scroll-mt para a ancoragem funcionar corretamente -->
+    <section id="documentos-section" class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden scroll-mt-24">
+      <div class="border-b border-slate-200 px-5 py-4">
+        <h2 class="text-base font-semibold">Documentos prioritários</h2>
+        <!-- Texto explicativo sobre o clique adicionado -->
+        <p class="text-sm text-slate-500">Primeiro vencidos, depois os que vencem antes, depois os em dia. <strong>Clique em um documento para abrir as informações gerais.</strong></p>
+      </div>
+
+      <div class="hidden lg:block overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-50 text-left text-slate-500">
+          <tr>
+            <th class="px-5 py-3 font-medium">Documento</th>
+            <th class="px-5 py-3 font-medium">Órgão expedidor</th>
+            <th class="px-5 py-3 font-medium">Categoria</th>
+            <th class="px-5 py-3 font-medium">Vencimento</th>
+            <th class="px-5 py-3 font-medium">Dias</th>
+            <th class="px-5 py-3 font-medium">Status</th>
+          </tr>
+          </thead>
+          <tbody>
+          <template x-for="doc in filteredDocumentos" :key="doc.id">
+            <!-- Adicionado 'title' para indicar a interatividade -->
+            <tr @click="selected = doc"
+                title="Clique para ver informações gerais"
+                class="cursor-pointer border-t border-slate-100 transition hover:bg-slate-50 hover:shadow-inner">
+              <td class="px-5 py-4">
+                <div class="font-medium" x-text="doc.documento || '-'"></div>
+                <div class="text-xs text-slate-500" x-text="doc.tipo_doc || doc.tipo_documento || doc.tipoDoc || '-'"></div>
+              </td>
+              <td class="px-5 py-4" x-text="doc.orgao_expeditor || doc.orgaoExpeditor || '-'"></td>
+              <td class="px-5 py-4" x-text="doc.categoria || '-'"></td>
+              <td class="px-5 py-4" x-text="formatDate(doc.vencimento)"></td>
+              <td class="px-5 py-4">
+                <span class="font-semibold" :class="urgenciaDiasClass(doc.dias_restantes)" x-text="doc.dias_restantes ?? '-'"></span>
+              </td>
+              <td class="px-5 py-4">
+                <span class="rounded-full px-2.5 py-1 text-xs font-medium"
+                      :class="badgeClass(doc.status_prazo || doc.statusPrazo)"
+                      x-text="labelStatus(doc.status_prazo || doc.statusPrazo)">
+                </span>
+              </td>
+            </tr>
+          </template>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="space-y-3 p-4 lg:hidden">
+        <template x-for="doc in filteredDocumentos" :key="doc.id">
+          <!-- Adicionado 'title' para indicar a interatividade no mobile -->
+          <div @click="selected = doc" 
+               title="Clique para ver informações gerais"
+               class="rounded-xl border border-slate-200 p-4 cursor-pointer transition hover:bg-slate-50 hover:shadow-md">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="font-medium" x-text="doc.documento || '-'"></p>
+                <p class="text-sm text-slate-500" x-text="doc.orgao_expeditor || doc.orgaoExpeditor || '-'"></p>
+              </div>
+              <span class="rounded-full px-2.5 py-1 text-xs font-medium"
+                    :class="badgeClass(doc.status_prazo || doc.statusPrazo)"
+                    x-text="labelStatus(doc.status_prazo || doc.statusPrazo)">
+              </span>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p class="text-xs text-slate-400">Categoria</p>
+                <p x-text="doc.categoria || '-'"></p>
+              </div>
+              <div>
+                <p class="text-xs text-slate-400">Dias restantes</p>
+                <p class="font-semibold" :class="urgenciaDiasClass(doc.dias_restantes)" x-text="doc.dias_restantes ?? '-'"></p>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal/Aside atualizado com transições suaves do Alpine.js -->
+  <div x-show="selected" x-cloak class="fixed inset-0 z-40">
+    <!-- Fundo escuro com fade-in/out -->
+    <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" 
+         x-show="selected"
+         x-transition.opacity.duration.300ms
+         @click="selected = null"></div>
+
+    <!-- Aba lateral com slide-in/out da direita para a esquerda -->
+    <aside class="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white shadow-2xl flex flex-col"
+           x-show="selected"
+           x-transition:enter="transform transition ease-out duration-300"
+           x-transition:enter-start="translate-x-full"
+           x-transition:enter-end="translate-x-0"
+           x-transition:leave="transform transition ease-in duration-200"
+           x-transition:leave-start="translate-x-0"
+           x-transition:leave-end="translate-x-full">
+           
+      <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4 sticky top-0 z-10">
+        <div>
+          <h3 class="text-lg font-semibold text-slate-800">Detalhes do documento</h3>
+          <p class="text-sm text-slate-500" x-text="selected?.tipo_doc || selected?.tipo_documento || selected?.tipoDocumento || '-'"></p>
+        </div>
+        <button @click="selected = null" class="rounded-lg p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-200 transition-colors">✕</button>
+      </div>
+
+      <!-- Informações reorganizadas logicamente -->
+      <div class="space-y-8 p-6">
+        
+        <!-- Bloco 1: Cabeçalho do Documento -->
+        <div>
+          <p class="text-sm font-medium text-slate-500 uppercase tracking-wide" x-text="selected?.orgao_expeditor || selected?.orgaoExpeditor || '-'"></p>
+          <p class="text-2xl font-bold text-slate-900 mt-1" x-text="selected?.documento || '-'"></p>
+          
+          <div class="flex items-center gap-3 mt-4">
+            <span class="inline-flex rounded-full px-3 py-1 text-sm font-medium shadow-sm"
+                  :class="badgeClass(selected?.status_prazo || selected?.statusPrazo)"
+                  x-text="labelStatus(selected?.status_prazo || selected?.statusPrazo)">
+            </span>
+            <span class="text-sm font-semibold"
+               :class="urgenciaDiasClass(selected?.dias_restantes || selected?.diasRestantes)"
+               x-text="(selected?.dias_restantes ?? selected?.diasRestantes ?? '-') + ' dias restantes'"></span>
+          </div>
+        </div>
+
+        <!-- Bloco 2: Prazos e Datas (Destaque Visual) -->
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+            Prazos e Datas
+          </h4>
+          <div class="grid grid-cols-2 gap-5">
+            <div>
+              <p class="text-xs text-slate-500">Emissão</p>
+              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected?.emissao)"></p>
+            </div>
+            <div>
+              <p class="text-xs text-slate-500">Vencimento</p>
+              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected?.vencimento)"></p>
+            </div>
+            <div>
+              <p class="text-xs text-slate-500">Última Renovação</p>
+              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected?.data_renovacao || selected?.dataRenovacao)"></p>
+            </div>
+            
+            <!-- Campo de sugestão com Tooltip customizado rápido e bonito -->
+            <div class="relative cursor-help group inline-block">
+              <p class="text-xs text-blue-600/70 border-b border-dashed border-blue-300 inline-block transition-colors group-hover:text-blue-800 group-hover:border-blue-500">
+                Sugestão de solicitação
+              </p>
+              <p class="font-bold text-blue-700 mt-0.5 text-lg" x-text="formatDate(selected?.data_sugerida_renovacao)"></p>
+              
+              <!-- Custom Tooltip -->
+              <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-3 py-2 bg-slate-800 text-white text-xs font-medium rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 pointer-events-none">
+                <span x-text="'Renove com ' + (selected?.renova_antes || 0) + ' dias de antecedência'"></span>
+                <!-- Pequena seta na base do tooltip -->
+                <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Bloco 3: Informações Adicionais -->
+        <div>
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-100 pb-2">Informações Adicionais</h4>
+          <div class="space-y-5">
+            <div>
+              <p class="text-xs text-slate-500 mb-1">Categoria</p>
+              <span class="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-700" x-text="selected?.categoria || '-'"></span>
+            </div>
+
+            <div>
+              <p class="text-xs text-slate-500">Descrição</p>
+              <p class="leading-relaxed text-slate-700 text-sm mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100" x-text="selected?.descricao || 'Sem descrição cadastrada.'"></p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p class="text-xs text-slate-500 mb-1">Site</p>
+                <template x-if="selected?.site">
+                  <a :href="selected.site" target="_blank" class="inline-block text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors truncate w-full" x-text="selected.site" title="Abrir site"></a>
+                </template>
+                <template x-if="!selected?.site">
+                  <p class="text-sm text-slate-400">-</p>
+                </template>
+              </div>
+
+              <div>
+                <p class="text-xs text-slate-500 mb-1">Arquivo / Caminho Local</p>
+                <p class="truncate text-sm text-slate-600 select-all"
+                   :title="selected?.caminho_arquivo || selected?.caminhoArquivo || 'Nenhum arquivo'"
+                   x-text="selected?.caminho_arquivo || selected?.caminhoArquivo || '-'"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>
