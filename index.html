@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Documentações</title>
   
+  <!-- Otimização de rede para forçar o Safari/iOS a não abortar o carregamento do CDN por timeout -->
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
   <script src="https://cdn.tailwindcss.com"></script>
+  
   <!-- Adicionando a biblioteca do Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -110,8 +114,9 @@
             if (pesoA !== pesoB) return pesoA - pesoB;
             
             // Critério de desempate: dias restantes (do menor para o maior)
-            const diasA = a.dias_restantes ?? a.diasRestantes ?? 9999;
-            const diasB = b.dias_restantes ?? b.diasRestantes ?? 9999;
+            // Substituído operador ?? por compatibilidade absoluta com Safari antigo
+            const diasA = (a.dias_restantes != null) ? a.dias_restantes : ((a.diasRestantes != null) ? a.diasRestantes : 9999);
+            const diasB = (b.dias_restantes != null) ? b.dias_restantes : ((b.diasRestantes != null) ? b.diasRestantes : 9999);
             return diasA - diasB;
           });
         },
@@ -329,7 +334,7 @@
               <td class="px-5 py-4" x-text="doc.categoria || '-'"></td>
               <td class="px-5 py-4" x-text="formatDate(doc.vencimento)"></td>
               <td class="px-5 py-4">
-                <span class="font-semibold" :class="urgenciaDiasClass(doc.dias_restantes)" x-text="doc.dias_restantes ?? '-'"></span>
+                <span class="font-semibold" :class="urgenciaDiasClass(doc.dias_restantes)" x-text="doc.dias_restantes != null ? doc.dias_restantes : '-'"></span>
               </td>
               <td class="px-5 py-4">
                 <span class="rounded-full px-2.5 py-1 text-xs font-medium"
@@ -371,7 +376,7 @@
               </div>
               <div>
                 <p class="text-xs text-slate-400">Dias restantes</p>
-                <p class="font-semibold" :class="urgenciaDiasClass(doc.dias_restantes)" x-text="doc.dias_restantes ?? '-'"></p>
+                <p class="font-semibold" :class="urgenciaDiasClass(doc.dias_restantes)" x-text="doc.dias_restantes != null ? doc.dias_restantes : '-'"></p>
               </div>
             </div>
           </div>
@@ -402,7 +407,7 @@
       <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
         <div>
           <h3 class="text-base sm:text-lg font-semibold text-slate-800">Detalhes do documento</h3>
-          <p class="text-xs sm:text-sm text-slate-500 truncate" x-text="selected?.tipo_doc || selected?.tipo_documento || selected?.tipoDocumento || '-'"></p>
+          <p class="text-xs sm:text-sm text-slate-500 truncate" x-text="selected ? (selected.tipo_doc || selected.tipo_documento || selected.tipoDocumento || '-') : '-'"></p>
         </div>
         <!-- Botão de fechar com área de clique maior no telemóvel -->
         <button @click="selected = null" class="rounded-lg p-2 sm:p-3 text-slate-400 hover:text-slate-800 hover:bg-slate-200 transition-colors">✕</button>
@@ -413,17 +418,17 @@
         
         <!-- Bloco 1: Cabeçalho do Documento -->
         <div>
-          <p class="text-xs sm:text-sm font-medium text-slate-500 uppercase tracking-wide" x-text="selected?.orgao_expeditor || selected?.orgaoExpeditor || '-'"></p>
-          <p class="text-xl sm:text-2xl font-bold text-slate-900 mt-1" x-text="selected?.documento || '-'"></p>
+          <p class="text-xs sm:text-sm font-medium text-slate-500 uppercase tracking-wide" x-text="selected ? (selected.orgao_expeditor || selected.orgaoExpeditor || '-') : '-'"></p>
+          <p class="text-xl sm:text-2xl font-bold text-slate-900 mt-1" x-text="selected ? (selected.documento || '-') : '-'"></p>
           
           <div class="flex flex-wrap items-center gap-2 sm:gap-3 mt-3 sm:mt-4">
             <span class="inline-flex rounded-full px-3 py-1 text-xs sm:text-sm font-medium shadow-sm"
-                  :class="badgeClass(selected?.status_prazo || selected?.statusPrazo)"
-                  x-text="labelStatus(selected?.status_prazo || selected?.statusPrazo)">
+                  :class="badgeClass(selected ? (selected.status_prazo || selected.statusPrazo) : '')"
+                  x-text="labelStatus(selected ? (selected.status_prazo || selected.statusPrazo) : '')">
             </span>
             <span class="text-xs sm:text-sm font-semibold"
-               :class="urgenciaDiasClass(selected?.dias_restantes || selected?.diasRestantes)"
-               x-text="(selected?.dias_restantes ?? selected?.diasRestantes ?? '-') + ' dias restantes'"></span>
+               :class="urgenciaDiasClass(selected ? (selected.dias_restantes != null ? selected.dias_restantes : selected.diasRestantes) : null)"
+               x-text="(selected ? (selected.dias_restantes != null ? selected.dias_restantes : (selected.diasRestantes != null ? selected.diasRestantes : '-')) : '-') + ' dias restantes'"></span>
           </div>
         </div>
 
@@ -436,15 +441,15 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
             <div>
               <p class="text-xs text-slate-500">Emissão</p>
-              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected?.emissao)"></p>
+              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected ? selected.emissao : null)"></p>
             </div>
             <div>
               <p class="text-xs text-slate-500">Vencimento</p>
-              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected?.vencimento)"></p>
+              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected ? selected.vencimento : null)"></p>
             </div>
             <div>
               <p class="text-xs text-slate-500">Última Renovação</p>
-              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected?.data_renovacao || selected?.dataRenovacao)"></p>
+              <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected ? (selected.data_renovacao || selected.dataRenovacao) : null)"></p>
             </div>
             
             <!-- Campo de sugestão com Tooltip customizado rápido e bonito. Ajustado para não vazar a tela -->
@@ -452,11 +457,11 @@
               <p class="text-xs text-blue-600/70 border-b border-dashed border-blue-300 inline-block transition-colors group-hover:text-blue-800 group-hover:border-blue-500">
                 Sugestão de solicitação
               </p>
-              <p class="font-bold text-blue-700 mt-0.5 text-base sm:text-lg" x-text="formatDate(selected?.data_sugerida_renovacao)"></p>
+              <p class="font-bold text-blue-700 mt-0.5 text-base sm:text-lg" x-text="formatDate(selected ? selected.data_sugerida_renovacao : null)"></p>
               
               <!-- Custom Tooltip responsivo -->
               <div class="absolute bottom-full left-0 sm:left-1/2 sm:-translate-x-1/2 mb-2 w-48 sm:w-max px-3 py-2 bg-slate-800 text-white text-xs font-medium rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 pointer-events-none text-center sm:whitespace-nowrap">
-                <span x-text="'Renove com ' + (selected?.renova_antes || 0) + ' dias de antecedência'"></span>
+                <span x-text="'Renove com ' + (selected ? (selected.renova_antes || 0) : 0) + ' dias de antecedência'"></span>
                 <!-- Pequena seta na base do tooltip -->
                 <div class="absolute top-full left-4 sm:left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
               </div>
@@ -471,21 +476,21 @@
           <div class="space-y-4 sm:space-y-5">
             <div>
               <p class="text-xs text-slate-500 mb-1">Categoria</p>
-              <span class="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-700" x-text="selected?.categoria || '-'"></span>
+              <span class="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-700" x-text="selected ? (selected.categoria || '-') : '-'"></span>
             </div>
 
             <div>
               <p class="text-xs text-slate-500">Descrição</p>
-              <p class="leading-relaxed text-slate-700 text-sm mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100" x-text="selected?.descricao || 'Sem descrição cadastrada.'"></p>
+              <p class="leading-relaxed text-slate-700 text-sm mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100" x-text="selected ? (selected.descricao || 'Sem descrição cadastrada.') : 'Sem descrição cadastrada.'"></p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p class="text-xs text-slate-500 mb-1">Site</p>
-                <template x-if="selected?.site">
+                <template x-if="selected && selected.site">
                   <a :href="selected.site" target="_blank" class="inline-block text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors truncate w-full" x-text="selected.site" title="Abrir site"></a>
                 </template>
-                <template x-if="!selected?.site">
+                <template x-if="!selected || !selected.site">
                   <p class="text-sm text-slate-400">-</p>
                 </template>
               </div>
@@ -493,8 +498,8 @@
               <div class="w-full overflow-hidden">
                 <p class="text-xs text-slate-500 mb-1">Arquivo / Caminho Local</p>
                 <p class="truncate text-sm text-slate-600 select-all block w-full"
-                   :title="selected?.caminho_arquivo || selected?.caminhoArquivo || 'Nenhum arquivo'"
-                   x-text="selected?.caminho_arquivo || selected?.caminhoArquivo || '-'"></p>
+                   :title="selected ? (selected.caminho_arquivo || selected.caminhoArquivo || 'Nenhum arquivo') : 'Nenhum arquivo'"
+                   x-text="selected ? (selected.caminho_arquivo || selected.caminhoArquivo || '-') : '-'"></p>
               </div>
             </div>
           </div>
