@@ -3,12 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Documentação</title>
+  <title>Documentações</title>
   
-  <!-- Otimização de rede para forçar o Safari/iOS a não abortar o carregamento do CDN por timeout -->
-  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
-  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- A solução definitiva para iOS Safari: 'defer' evita que o motor WebKit aborte o script pesado por timeout de parser. Versão fixada evita corrupção de cache. -->
+  <script src="https://cdn.tailwindcss.com?v=3.4.3" defer></script>
   
   <!-- Adicionando a biblioteca do Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -190,7 +188,7 @@
   </script>
 
   <!-- O script do Alpine DEVE usar o atributo defer para não dar ecrã em branco no GitHub -->
-  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -205,7 +203,7 @@
         <img src="https://res.cloudinary.com/dbnyxxhe3/image/upload/v1772102800/02_Prancheta_1_ksm9oj.png" alt="Logo" class="h-8 sm:h-10 md:h-11 w-auto object-contain transition-all duration-300">
         <div>
           <!-- Textos adaptáveis -->
-          <h1 class="text-lg sm:text-xl font-semibold tracking-tight">New Version</h1>
+          <h1 class="text-lg sm:text-xl font-semibold tracking-tight">Teste iphone</h1>
           <p class="text-xs sm:text-sm text-slate-500">conectado a base de dados</p>
         </div>
       </div>
