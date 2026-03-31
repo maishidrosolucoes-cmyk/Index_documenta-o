@@ -65,6 +65,7 @@
             }
 
             const { data, error } = await supabaseClient
+              .schema('documentos')
               .from('vw_documentos_status')
               .select('*');
 
