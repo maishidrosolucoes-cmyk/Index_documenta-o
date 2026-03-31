@@ -24,7 +24,10 @@
 
     try {
       if (supabaseUrl.startsWith('http://') || supabaseUrl.startsWith('https://')) {
-        supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+        // ALTERAÇÃO: Configurando o esquema 'documentos' globalmente no momento da criação do cliente
+        supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
+          db: { schema: 'documentos' }
+        });
       }
     } catch (error) {
       console.error("Erro crítico ao carregar Supabase:", error);
@@ -37,6 +40,7 @@
         categoriasApi: [],
         resumoApi: {},
         loading: false,
+        errorMessage: '', // ALTERAÇÃO: Variável para guardar e mostrar erros na interface
         search: '',
         statusFilter: '',
         categoriaFilter: '',
@@ -57,6 +61,7 @@
 
         async carregar() {
           this.loading = true;
+          this.errorMessage = ''; // Limpa os erros anteriores
           try {
             if (!supabaseClient) {
                console.warn("Ignorando busca no banco pois o Supabase não está configurado.");
@@ -64,8 +69,8 @@
                return;
             }
 
+            // ALTERAÇÃO: Como o esquema já foi definido globalmente acima, chamamos apenas o from()
             const { data, error } = await supabaseClient
-              .schema('documentos')
               .from('vw_documentos_status')
               .select('*');
 
@@ -75,6 +80,8 @@
             
           } catch (e) {
             console.error('Erro ao carregar documentos do Supabase:', e.message);
+            // ALTERAÇÃO: Guarda a mensagem de erro para mostrar visualmente ao utilizador
+            this.errorMessage = e.message; 
           } finally {
             this.loading = false;
           }
@@ -86,14 +93,12 @@
           this.categoriaFilter = '';
         },
 
-        // Função adicionada para filtragem e rolagem suave via cartões
         scrollToLista(status) {
           this.statusFilter = status;
           document.getElementById('documentos-section').scrollIntoView({ behavior: 'smooth' });
         },
 
         get filteredDocumentos() {
-          // Pesos para ordenação: Vencidos primeiro, depois a vencer, depois em dia.
           const pesos = { 'vencido': 1, 'vence_em_breve': 2, 'em_dia': 3 };
 
           return this.documentos.filter(doc => {
@@ -104,7 +109,6 @@
             const bateCategoria = !this.categoriaFilter || doc.categoria === this.categoriaFilter;
             return bateBusca && bateStatus && bateCategoria;
           }).sort((a, b) => {
-            // Ordena pela prioridade definida nos pesos
             const statusA = a.status_prazo || a.statusPrazo;
             const statusB = b.status_prazo || b.statusPrazo;
             const pesoA = pesos[statusA] || 4;
@@ -112,8 +116,6 @@
             
             if (pesoA !== pesoB) return pesoA - pesoB;
             
-            // Critério de desempate: dias restantes (do menor para o maior)
-            // Substituído operador ?? por compatibilidade absoluta com Safari antigo
             const diasA = (a.dias_restantes != null) ? a.dias_restantes : ((a.diasRestantes != null) ? a.diasRestantes : 9999);
             const diasB = (b.dias_restantes != null) ? b.dias_restantes : ((b.diasRestantes != null) ? b.diasRestantes : 9999);
             return diasA - diasB;
@@ -121,7 +123,6 @@
         },
 
         get stats() {
-          // Para os stats, filtramos os totais ignorando o statusFilter atual para que os cartões não zerassem
           const listaBase = this.documentos.filter(doc => {
             const texto = `${doc.documento || ''} ${doc.orgao_expeditor || doc.orgaoExpeditor || ''} ${doc.categoria || ''} ${doc.tipo_doc || doc.tipo_documento || doc.tipoDocumento || ''}`.toLowerCase();
             const bateBusca = texto.includes(this.search.toLowerCase());
@@ -188,23 +189,19 @@
     });
   </script>
 
-  <!-- O script do Alpine DEVE usar o atributo defer para não dar ecrã em branco no GitHub -->
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 
 </head>
 <body class="bg-slate-50 text-slate-800">
-<!-- Chamada correta do componente registado no Alpine -->
 <div x-data="dashboard" class="min-h-screen">
 
   <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-    <!-- Ajuste no padding para telemóveis -->
     <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:py-4 sm:px-6 lg:px-8">
       <div class="flex items-center gap-3">
-        <!-- Ícone adaptável (h-8 no telemóvel, h-10 em tablet, h-11 no desktop) -->
         <img src="https://res.cloudinary.com/dbnyxxhe3/image/upload/v1772102800/02_Prancheta_1_ksm9oj.png" alt="Logo" class="h-8 sm:h-10 md:h-11 w-auto object-contain transition-all duration-300">
         <div>
-          <!-- Textos adaptáveis -->
-          <h1 class="text-lg sm:text-xl font-semibold tracking-tight">Teste new</h1>
+          <!-- Título atualizado para corresponder ao seu teste -->
+          <h1 class="text-lg sm:text-xl font-semibold tracking-tight">Documentações</h1>
           <p class="text-xs sm:text-sm text-slate-500">conectado a base de dados</p>
         </div>
       </div>
@@ -219,6 +216,19 @@
   </header>
 
   <main class="mx-auto max-w-7xl px-4 py-4 sm:py-6 sm:px-6 lg:px-8">
+    
+    <!-- ALTERAÇÃO: Painel Visual de Erro. Ajuda muito a debugar! -->
+    <template x-if="errorMessage">
+      <div class="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 shadow-sm flex items-start gap-3">
+        <span class="text-xl">⚠️</span>
+        <div>
+          <h3 class="text-sm font-semibold text-rose-800">Erro de permissão no Supabase</h3>
+          <p class="text-sm text-rose-700 mt-1" x-text="errorMessage"></p>
+          <p class="text-xs text-rose-600 mt-2 font-medium">Lembre-se de rodar o comando "GRANT USAGE" no SQL Editor do Supabase.</p>
+        </div>
+      </div>
+    </template>
+
     <section class="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
       <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
         <div class="mb-4 flex items-center justify-between">
@@ -227,7 +237,6 @@
         </div>
 
         <div class="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
-          <!-- Modificados para permitir clique, filtragem e rolagem -->
           <div @click="scrollToLista('')" title="Ver todos e ir para a lista" class="rounded-xl bg-slate-50 p-3 sm:p-4 cursor-pointer hover:bg-slate-100 transition-colors">
             <p class="text-xs text-slate-500">Total</p>
             <p class="mt-1 text-xl sm:text-2xl font-semibold" x-text="stats.total"></p>
@@ -298,11 +307,9 @@
       </div>
     </section>
 
-    <!-- Adicionado ID e scroll-mt para a ancoragem funcionar corretamente -->
     <section id="documentos-section" class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden scroll-mt-24">
       <div class="border-b border-slate-200 px-4 sm:px-5 py-4">
         <h2 class="text-base font-semibold">Documentos prioritários</h2>
-        <!-- Texto explicativo sobre o clique adicionado -->
         <p class="text-xs sm:text-sm text-slate-500 mt-1">Primeiro vencidos, depois os que vencem antes, depois os em dia. <strong>Clique em um documento para abrir as informações gerais.</strong></p>
       </div>
 
@@ -321,7 +328,6 @@
           </thead>
           <tbody>
           <template x-for="doc in filteredDocumentos" :key="doc.id">
-            <!-- Adicionado 'title' para indicar a interatividade -->
             <tr @click="selected = doc"
                 title="Clique para ver informações gerais"
                 class="cursor-pointer border-t border-slate-100 transition hover:bg-slate-50 hover:shadow-inner">
@@ -349,7 +355,6 @@
 
       <div class="space-y-3 p-4 lg:hidden">
         <template x-for="doc in filteredDocumentos" :key="doc.id">
-          <!-- Adicionado 'title' para indicar a interatividade no mobile -->
           <div @click="selected = doc" 
                title="Clique para ver informações gerais"
                class="rounded-xl border border-slate-200 p-4 cursor-pointer transition hover:bg-slate-50 hover:shadow-md">
@@ -384,15 +389,12 @@
     </section>
   </main>
 
-  <!-- Modal/Aside atualizado com transições suaves do Alpine.js -->
   <div x-show="selected" x-cloak class="fixed inset-0 z-40">
-    <!-- Fundo escuro com fade-in/out e touch-none para evitar scroll no iOS/Android -->
     <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm touch-none" 
          x-show="selected"
          x-transition.opacity.duration.300ms
          @click="selected = null"></div>
 
-    <!-- Aba lateral com slide-in/out da direita para a esquerda. Adicionado overscroll-contain -->
     <aside class="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white shadow-2xl flex flex-col overscroll-contain"
            x-show="selected"
            x-transition:enter="transform transition ease-out duration-300"
@@ -402,20 +404,16 @@
            x-transition:leave-start="translate-x-0"
            x-transition:leave-end="translate-x-full">
            
-      <!-- Header do modal responsivo -->
       <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
         <div>
           <h3 class="text-base sm:text-lg font-semibold text-slate-800">Detalhes do documento</h3>
           <p class="text-xs sm:text-sm text-slate-500 truncate" x-text="selected ? (selected.tipo_doc || selected.tipo_documento || selected.tipoDocumento || '-') : '-'"></p>
         </div>
-        <!-- Botão de fechar com área de clique maior no telemóvel -->
         <button @click="selected = null" class="rounded-lg p-2 sm:p-3 text-slate-400 hover:text-slate-800 hover:bg-slate-200 transition-colors">✕</button>
       </div>
 
-      <!-- Informações reorganizadas logicamente -->
       <div class="space-y-6 sm:space-y-8 p-4 sm:p-6">
         
-        <!-- Bloco 1: Cabeçalho do Documento -->
         <div>
           <p class="text-xs sm:text-sm font-medium text-slate-500 uppercase tracking-wide" x-text="selected ? (selected.orgao_expeditor || selected.orgaoExpeditor || '-') : '-'"></p>
           <p class="text-xl sm:text-2xl font-bold text-slate-900 mt-1" x-text="selected ? (selected.documento || '-') : '-'"></p>
@@ -431,12 +429,10 @@
           </div>
         </div>
 
-        <!-- Bloco 2: Prazos e Datas (Destaque Visual adaptável) -->
         <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5 shadow-sm">
           <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 sm:mb-4 flex items-center gap-2">
             Prazos e Datas
           </h4>
-          <!-- Responsivo: 1 coluna no telemóvel, 2 colunas a partir do tablet -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
             <div>
               <p class="text-xs text-slate-500">Emissão</p>
@@ -451,17 +447,14 @@
               <p class="font-medium text-slate-800 mt-0.5" x-text="formatDate(selected ? (selected.data_renovacao || selected.dataRenovacao) : null)"></p>
             </div>
             
-            <!-- Campo de sugestão com Tooltip customizado rápido e bonito. Ajustado para não vazar a tela -->
             <div class="relative cursor-help group inline-block">
               <p class="text-xs text-blue-600/70 border-b border-dashed border-blue-300 inline-block transition-colors group-hover:text-blue-800 group-hover:border-blue-500">
                 Sugestão de solicitação
               </p>
               <p class="font-bold text-blue-700 mt-0.5 text-base sm:text-lg" x-text="formatDate(selected ? selected.data_sugerida_renovacao : null)"></p>
               
-              <!-- Custom Tooltip responsivo -->
               <div class="absolute bottom-full left-0 sm:left-1/2 sm:-translate-x-1/2 mb-2 w-48 sm:w-max px-3 py-2 bg-slate-800 text-white text-xs font-medium rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 pointer-events-none text-center sm:whitespace-nowrap">
                 <span x-text="'Renove com ' + (selected ? (selected.renova_antes || 0) : 0) + ' dias de antecedência'"></span>
-                <!-- Pequena seta na base do tooltip -->
                 <div class="absolute top-full left-4 sm:left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
               </div>
             </div>
@@ -469,7 +462,6 @@
           </div>
         </div>
 
-        <!-- Bloco 3: Informações Adicionais -->
         <div>
           <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 sm:mb-4 border-b border-slate-100 pb-2">Informações Adicionais</h4>
           <div class="space-y-4 sm:space-y-5">
